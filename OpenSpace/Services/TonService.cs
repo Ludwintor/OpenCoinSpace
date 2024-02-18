@@ -1,6 +1,7 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpenSpace.Core;
+using OpenSpace.Logging;
 using OpenSpace.Repositories;
 using TonSdk.Connect;
 
@@ -8,15 +9,13 @@ namespace OpenSpace.Services
 {
     internal sealed class TonService : ITonService
     {
-        private static readonly EventId _tonId = new(102, "TonConnect");
-
         private readonly ILogger _logger;
         private readonly HttpClient _client;
         private readonly TonConnectOptions _connectorOptions;
         private readonly ITonConnectRepository _repository;
         private readonly SimpleCache<long, TonConnect> _cache;
 
-        public TonService(ILogger logger, HttpClient client, ITonConnectRepository repository)
+        public TonService(ILogger logger, HttpClient client, ITonConnectRepository repository, Config config)
         {
             _logger = logger;
             _client = client;
@@ -25,7 +24,7 @@ namespace OpenSpace.Services
             _cache.Evicted += RecycleConnector;
             _connectorOptions = new()
             {
-                ManifestUrl = "https://raw.githubusercontent.com/Ludwintor/OpenCoinSpace/main/static/connect-manifest.json",
+                ManifestUrl = config.TonConnectManifestUrl,
             };
         }
 
@@ -54,6 +53,7 @@ namespace OpenSpace.Services
 
         private void RecycleConnector(long userId, TonConnect connector)
         {
+            _logger.LogInformation(LogEvents.TonConnect, "User {Id} connector paused", userId.ToString());
             connector.PauseConnection();
         }
     }

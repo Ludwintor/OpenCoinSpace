@@ -10,5 +10,6 @@
         public const char TRIGRAM = '\u2630'; // ☰
         public const char GEAR = '\u2699'; // ⚙
         public const char INFO = '\u2139'; // ℹ
+        public const char CROSS = '\u274C'; // ❌
     }
 }

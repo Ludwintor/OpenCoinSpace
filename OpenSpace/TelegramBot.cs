@@ -15,8 +15,6 @@ namespace OpenSpace
     {
         private const char QUERY_DELIMETER = ':';
 
-        private static readonly EventId _botEvent = new(100, "TGBot");
-
         private readonly TelegramBotClient _client;
         private readonly IServiceProvider _provider;
         private readonly ILogger _logger;
@@ -34,7 +32,7 @@ namespace OpenSpace
         public async Task RunAsync(ReceiverOptions? options = null)
         {
             User user = await _client.GetMeAsync().ConfigureAwait(false);
-            _logger.LogInformation(_botEvent, "Bot started {Username}", user.Username);
+            _logger.LogInformation(LogEvents.Bot, "Bot started {Username}", user.Username);
             await _client.ReceiveAsync(UpdateHandler, ErrorHandler, options).ConfigureAwait(false);
         }
 
@@ -49,20 +47,28 @@ namespace OpenSpace
         {
             Task.Run(() =>
             {
-                return update.Type switch
+                try
                 {
-                    UpdateType.Message => HandleMessage(client, update.Message!, ct),
-                    UpdateType.CallbackQuery => HandleCallbackQuery(client, update.CallbackQuery!, ct),
-                    UpdateType.InlineQuery => HandleInlineQuery(client, update.InlineQuery!, ct),
-                    _ => Task.CompletedTask,
-                };
+                    return update.Type switch
+                    {
+                        UpdateType.Message => HandleMessage(client, update.Message!, ct),
+                        UpdateType.CallbackQuery => HandleCallbackQuery(client, update.CallbackQuery!, ct),
+                        UpdateType.InlineQuery => HandleInlineQuery(client, update.InlineQuery!, ct),
+                        _ => Task.CompletedTask,
+                    };
+                }
+                catch (Exception e)
+                {
+                    _logger.LogError(LogEvents.Bot, e, "Handling {Type} Update errored", update.Type.ToString());
+                    return Task.CompletedTask;
+                }
             }, ct);
             return Task.CompletedTask;
         }
 
         private Task ErrorHandler(ITelegramBotClient client, Exception exception, CancellationToken ct)
         {
-            _logger.LogError(LogEvents.Update, exception, "Error occured during updates fetch");
+            _logger.LogError(LogEvents.Bot, exception, "Error occured during updates fetch");
             return Task.CompletedTask;
         }
 
@@ -92,6 +98,7 @@ namespace OpenSpace
             string? data = query.Data;
             if (string.IsNullOrEmpty(data))
                 return Task.CompletedTask;
+            _logger.LogDebug(LogEvents.Bot, "User {User} use callback query {Data}", query.From.Username ?? query.From.Id.ToString(), data);
             ReadOnlySpan<char> span = data.AsSpan();
             int delim = span.IndexOf(QUERY_DELIMETER);
             string id = delim >= 0 ? span[..delim].ToString() : data;

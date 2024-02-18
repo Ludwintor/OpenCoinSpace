@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "OpenSpace": {
+      "commandName": "Project",
+      "commandLineArgs": "dev.config.json"
+    }
+  }
+}

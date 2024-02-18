@@ -49,15 +49,22 @@ namespace OpenSpace.Core
             return _cache.TryRemove(key, out _);
         }
 
+        public void Clear()
+        {
+            _cache.Clear();
+        }
+
         private void StartScanForExpiredItems()
         {
-            if (_expirationScanFrequency > DateTime.UtcNow - _lastExpirationScan)
+            DateTime now = DateTime.UtcNow;
+            if (_expirationScanFrequency > now - _lastExpirationScan)
                 return;
-            Task.Factory.StartNew(state => ScanForExpiredItems((SimpleCache<TKey, TValue>)state!), this,
+            _lastExpirationScan = now;
+            Task.Factory.StartNew(state => SimpleCache<TKey, TValue>.ScanForExpiredItems((SimpleCache<TKey, TValue>)state!), this,
                                   CancellationToken.None, TaskCreationOptions.DenyChildAttach, TaskScheduler.Default);
         }
 
-        private void ScanForExpiredItems(SimpleCache<TKey, TValue> cache)
+        private static void ScanForExpiredItems(SimpleCache<TKey, TValue> cache)
         {
             DateTime now = DateTime.UtcNow;
             foreach ((TKey key, CacheEntry entry) in cache._cache)

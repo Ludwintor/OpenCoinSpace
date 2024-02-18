@@ -9,6 +9,7 @@ namespace OpenSpace.Logging
 {
     internal static class LogEvents
     {
-        public static EventId Update { get; } = new(100, "UpdateLoop");
+        public static EventId Bot { get; } = new(100, "TelegramBot");
+        public static EventId TonConnect { get; } = new(101, "TonConnect");
     }
 }
