@@ -1,8 +1,9 @@
 ﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using OpenSpace.Core;
 using OpenSpace.Logging;
 using OpenSpace.Repositories;
+using OpenSpace.Toncenter;
+using OpenSpace.Toncenter.Entities;
 using TonSdk.Connect;
 
 namespace OpenSpace.Services
@@ -10,22 +11,30 @@ namespace OpenSpace.Services
     internal sealed class TonService : ITonService
     {
         private readonly ILogger _logger;
-        private readonly HttpClient _client;
+        private readonly ToncenterClient _client;
         private readonly TonConnectOptions _connectorOptions;
         private readonly ITonConnectRepository _repository;
         private readonly SimpleCache<long, TonConnect> _cache;
+        private readonly string _tokenAddress;
 
-        public TonService(ILogger logger, HttpClient client, ITonConnectRepository repository, Config config)
+        public TonService(ILogger logger, ToncenterClient client, ITonConnectRepository repository, Config config)
         {
             _logger = logger;
             _client = client;
             _repository = repository;
+            _tokenAddress = config.TokenAddress;
             _cache = new(TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10));
             _cache.Evicted += RecycleConnector;
             _connectorOptions = new()
             {
                 ManifestUrl = config.TonConnectManifestUrl,
             };
+        }
+
+        public Task<JettonWallet?> GetJettonWalletAsync(string owner)
+        {
+            // TODO: Add cache?
+            return _client.GetJettonWalletAsync(owner, _tokenAddress);
         }
 
         public TonConnect GetUserConnector(long userId)

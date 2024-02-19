@@ -3,19 +3,23 @@ using Microsoft.Extensions.Logging;
 using OpenSpace.Core;
 using OpenSpace.Logging;
 using OpenSpace.Services;
+using OpenSpace.Toncenter.Entities;
 using OpenSpace.Utils;
 using Telegram.Bot;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TonSdk.Connect;
+using TonSdk.Core;
 
 namespace OpenSpace.Resolvers
 {
     internal sealed class WalletResolver : ICallbackResolver
     {
         private const string CONNECTED_WALLET_TEXT = """
-            Адрес: {0}
-            Баланс: WIP
+            Адрес: `{0}`
+
+            Баланс OPEN: {1}
             """;
         private const string NO_WALLET_TEXT = """
             Кошелёк не подключен
@@ -50,11 +54,13 @@ namespace OpenSpace.Resolvers
         private readonly ITonService _ton;
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<long, Action> _connectedUnsubscribes;
+        private readonly int _tokenDecimals;
 
-        public WalletResolver(ITonService ton, ILogger logger)
+        public WalletResolver(ITonService ton, ILogger logger, Config config)
         {
             _ton = ton;
             _logger = logger;
+            _tokenDecimals = config.TokenDecimals;
             _connectedUnsubscribes = [];
         }
 
@@ -70,13 +76,10 @@ namespace OpenSpace.Resolvers
 
         private async Task HandleWalletAsync(TelegramBot bot, CallbackQuery query, CancellationToken ct)
         {
-            await bot.Client.AnswerCallbackQueryAsync(query.Id, cancellationToken: ct).ConfigureAwait(false);
             TonConnect connector = _ton.GetUserConnector(query.From.Id);
             if (connector.IsConnected || await connector.RestoreConnection().ConfigureAwait(false))
             {
-                string text = string.Format(CONNECTED_WALLET_TEXT, connector.Wallet.Account.Address?.ToNonBounceable());
-                await bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, text,
-                                                      replyMarkup: _connectedWalletMarkup, cancellationToken: ct).ConfigureAwait(false);
+                await ShowWalletAsync(bot, query, connector.Account.Address!.ToNonBounceable(), ct).ConfigureAwait(false);
             }
             else
             {
@@ -87,7 +90,6 @@ namespace OpenSpace.Resolvers
 
         private async Task HandleConnectAsync(TelegramBot bot, CallbackQuery query, string? arg, CancellationToken ct)
         {
-            await bot.Client.AnswerCallbackQueryAsync(query.Id, cancellationToken: ct).ConfigureAwait(false);
             if (string.IsNullOrEmpty(arg))
             {
                 await bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, SELECT_WALLET_TEXT,
@@ -104,26 +106,36 @@ namespace OpenSpace.Resolvers
             {
                 // TODO: something went wrong, there's no such wallet
                 // ask user to retry
+                return;
             }
-            // TODO: THIS FUCKING TonSDK IS HORRIBLE. UNSUBSCRIBE ACTION RECEIVED FROM THIS MESSAGE, WHY???
-            // write my own C# TonSDK that will be good
             Uri connectUri = new(await connector.Connect(config.Value).ConfigureAwait(false));
             InlineKeyboardMarkup markup = new([
                 [InlineKeyboardButton.WithUrl("Подключить!", connectUri.AbsoluteUri)]
             ]);
+            // TODO: THIS TonSDK IS HORRIBLE. UNSUBSCRIBE ACTION RECEIVED FROM THIS MESSAGE, WHY???
+            // write my own C# TonSDK that will be good
             unsubscribe = connector.OnStatusChange(wallet => OnWalletConnected(bot, query, wallet, ct), error => OnWalletErrored(bot, query, error, ct));
-            _connectedUnsubscribes.TryAdd(query.From.Id, unsubscribe);
+            while (!_connectedUnsubscribes.TryAdd(query.From.Id, unsubscribe))
+                if (_connectedUnsubscribes.TryRemove(query.From.Id, out Action? oldUnsubscribe))
+                    oldUnsubscribe();
             await bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, ONE_STEP_CONNECT_TEXT,
                                                   replyMarkup: markup, cancellationToken: ct).ConfigureAwait(false);
+        }
+
+        private async Task ShowWalletAsync(TelegramBot bot, CallbackQuery query, string address, CancellationToken ct)
+        {
+            JettonWallet? wallet = await _ton.GetJettonWalletAsync(address).ConfigureAwait(false);
+            double balance = wallet != null ? (double)wallet.Value.Balance / Math.Pow(10, _tokenDecimals) : 0d;
+            string text = string.Format(CONNECTED_WALLET_TEXT, address, MessageHelper.EscapeMarkdown(balance.ToString()));
+            await bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, text, parseMode: ParseMode.MarkdownV2,
+                                                   replyMarkup: _connectedWalletMarkup, cancellationToken: ct).ConfigureAwait(false);
         }
 
         private void OnWalletConnected(TelegramBot bot, CallbackQuery query, Wallet wallet, CancellationToken ct)
         {
             string address = wallet.Account.Address?.ToNonBounceable() ?? string.Empty;
             _logger.LogInformation(LogEvents.Bot, "User {User} connected wallet {Address}", query.From.Username ?? query.From.Id.ToString(), address);
-            string text = string.Format(CONNECTED_WALLET_TEXT, address);
-            bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, text,
-                                            replyMarkup: _connectedWalletMarkup, cancellationToken: ct).ConfigureAwait(false);
+            ShowWalletAsync(bot, query, address, ct).ConfigureAwait(false);
         }
 
         private void OnWalletErrored(TelegramBot bot, CallbackQuery query, string error, CancellationToken ct)
@@ -131,7 +143,7 @@ namespace OpenSpace.Resolvers
             string text = string.Format(CONNECTION_ERRORED_TEXT, error);
             _logger.LogWarning(LogEvents.Bot, "User {User} cannot connect wallet. Reason: {Error}", query.From.Username ?? query.From.Id.ToString(), error);
             bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, text,
-                                                  replyMarkup: _connectedWalletMarkup, cancellationToken: ct).ConfigureAwait(false);
+                                                  replyMarkup: _connectedWalletMarkup, cancellationToken: ct);
         }
     }
 }

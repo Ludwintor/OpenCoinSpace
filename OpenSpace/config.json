@@ -1,5 +1,7 @@
 ﻿{
   "botApi": "",
   "toncenterApi": "",
-  "tonConnectManifestUrl": ""
+  "tonConnectManifestUrl": "",
+  "tokenAddress": "",
+  "tokenDecimals": 9
 }

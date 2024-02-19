@@ -34,7 +34,6 @@ namespace OpenSpace.Resolvers
 
         public async Task ResolveCallbackAsync(TelegramBot bot, CallbackQuery query, string id, string? arg, CancellationToken ct)
         {
-            await bot.Client.AnswerCallbackQueryAsync(query.Id, cancellationToken: ct).ConfigureAwait(false);
             if (id != Callbacks.MAIN)
                 return;
             await bot.Client.EditMessageTextAsync(query.Message!.Chat, query.Message.MessageId, _startMessage,
