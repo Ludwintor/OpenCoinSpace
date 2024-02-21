@@ -29,19 +29,19 @@ namespace OpenSpace
             Config config = ReadConfig(args);
             IServiceCollection services = new ServiceCollection();
             services.AddSingleton(config); // TODO: Probably options pattern?
-            services.AddSingleton<ILogger, ConsoleLogger>(provider => new ConsoleLogger(LogLevel.Debug));
+            services.AddSingleton<ILogger, ConsoleLogger>(provider => new ConsoleLogger(LogLevel.Trace));
             services.AddSingleton<ITonConnectRepository, TonConnectRepository>();
             services.AddSingleton<ITonService, TonService>();
             services.AddHttpClient<ToncenterClient>(client =>
             {
-                client.BaseAddress = new("https://toncenter.com/api/v3/");
+                client.BaseAddress = new(config.ToncenterUrl);
                 client.DefaultRequestHeaders.Add("X-API-Key", config.ToncenterApi);
                 client.DefaultRequestHeaders.Add("Accept", "application/json");
             }).AddPolicyHandler(GetRetryPolicy);
             AddResolvers(services);
             _serviceProvider = services.BuildServiceProvider();
 
-            TelegramBot bot = new("6569873991:AAFob2HOh0o9yDOQAijdkD0KEGpTlDBY3kE", _serviceProvider);
+            TelegramBot bot = new(config.BotApi, _serviceProvider);
             ReceiverOptions options = new()
             {
                 AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery, UpdateType.InlineQuery],
@@ -59,6 +59,9 @@ namespace OpenSpace
             collection.AddKeyedSingleton<ICallbackResolver, StartResolver>(Callbacks.MAIN);
             collection.AddKeyedSingleton<ICallbackResolver, WalletResolver>(Callbacks.WALLET);
             collection.AddKeyedSingleton<ICallbackResolver, WalletResolver>(Callbacks.CONNECT_WALLET);
+            collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.STAKING);
+            collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.STAKE);
+            collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.UNSTAKE);
         }
 
         private static Config ReadConfig(string[] args)
@@ -91,11 +94,17 @@ namespace OpenSpace
         [JsonProperty("botApi", Required = Required.Always)]
         public string BotApi { get; private set; } = null!;
 
+        [JsonProperty("toncenterUrl", Required = Required.Always)]
+        public string ToncenterUrl { get; private set; } = null!;
+
         [JsonProperty("toncenterApi", Required = Required.Always)]
         public string ToncenterApi { get; private set; } = null!;
 
         [JsonProperty("tonConnectManifestUrl", Required = Required.Always)]
         public string TonConnectManifestUrl { get; private set; } = null!;
+
+        [JsonProperty("stakingAddress", Required = Required.Always)]
+        public string StakingAddress { get; private set; } = null!;
 
         [JsonProperty("tokenAddress", Required = Required.Always)]
         public string TokenAddress { get; private set; } = null!;

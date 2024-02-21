@@ -1,7 +1,9 @@
 ﻿{
   "botApi": "",
+  "toncenterUrl": "https://toncenter.com/api/v3/",
   "toncenterApi": "",
   "tonConnectManifestUrl": "",
+  "stakingAddress": "",
   "tokenAddress": "",
   "tokenDecimals": 9
 }

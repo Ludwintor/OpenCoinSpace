@@ -16,11 +16,11 @@ namespace OpenSpace.Resolvers
             \- Стейкинг
             """;
         private static readonly InlineKeyboardMarkup _startMarkup = new([
-            [InlineKeyboardButton.WithCallbackData($"{Emojis.PURSE}Кошелёк", Callbacks.WALLET)],
-            [InlineKeyboardButton.WithCallbackData($"{Emojis.GEM}Стейкинг", Callbacks.STAKING)],
+            [InlineKeyboardButton.WithCallbackData($"{Emojis.PURSE} Кошелёк", Callbacks.WALLET)],
+            [InlineKeyboardButton.WithCallbackData($"{Emojis.GEM} Стейкинг", Callbacks.STAKING)],
             [
-                InlineKeyboardButton.WithCallbackData($"{Emojis.GEAR}Настройки", Callbacks.SETTINGS),
-                InlineKeyboardButton.WithCallbackData($"Информация{Emojis.BOOK}", Callbacks.INFO)
+                InlineKeyboardButton.WithCallbackData($"{Emojis.GEAR} Настройки", Callbacks.SETTINGS),
+                InlineKeyboardButton.WithCallbackData($"Информация {Emojis.BOOK}", Callbacks.INFO)
             ]
         ]);
 

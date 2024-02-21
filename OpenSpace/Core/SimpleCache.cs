@@ -8,12 +8,14 @@ namespace OpenSpace.Core
         public event Action<TKey, TValue>? Evicted;
 
         private readonly ConcurrentDictionary<TKey, CacheEntry> _cache;
+        private readonly TimeSpan? _absoluteExpiration;
         private readonly TimeSpan _slidingExpiration;
         private readonly TimeSpan _expirationScanFrequency;
         private DateTime _lastExpirationScan;
 
-        public SimpleCache(TimeSpan slidingExpiration, TimeSpan expirationScanFrequency)
+        public SimpleCache(TimeSpan? absoluteExpiration, TimeSpan slidingExpiration, TimeSpan expirationScanFrequency)
         {
+            _absoluteExpiration = absoluteExpiration;
             _slidingExpiration = slidingExpiration;
             _expirationScanFrequency = expirationScanFrequency;
             _lastExpirationScan = DateTime.UtcNow;
@@ -26,21 +28,23 @@ namespace OpenSpace.Core
             if (!_cache.TryGetValue(key, out CacheEntry? entry))
                 return false;
             DateTime now = DateTime.UtcNow; // TODO: Use DI version of clock
-            if (entry.ExpiresAt <= now)
+            if (entry.SlidingExpiresAt <= now || entry.AbsoluteExpiresAt <= now)
             {
                 Evict(key);
                 return false;
             }
-            entry.ExpiresAt = now + _slidingExpiration;
+            entry.SlidingExpiresAt = now + _slidingExpiration;
             value = entry.Value;
             return true;
         }
 
         public void AddOrUpdate(TKey key, TValue value)
         {
-            DateTime expiresAt = DateTime.UtcNow + _slidingExpiration;
-            CacheEntry entry = new(key, value, expiresAt);
-            _cache.AddOrUpdate(key, entry, (key, old) => entry);
+            DateTime now = DateTime.UtcNow;
+            DateTime absoluteExpiration = _absoluteExpiration.HasValue ? now + _absoluteExpiration.Value : DateTime.MaxValue;
+            DateTime slidingExpiration = now + _slidingExpiration;
+            CacheEntry entry = new(value, absoluteExpiration, slidingExpiration);
+            _cache.AddOrUpdate(key, entry, (_, _) => entry);
             StartScanForExpiredItems();
         }
 
@@ -69,7 +73,7 @@ namespace OpenSpace.Core
             DateTime now = DateTime.UtcNow;
             foreach ((TKey key, CacheEntry entry) in cache._cache)
             {
-                if (entry.ExpiresAt <= now)
+                if (entry.SlidingExpiresAt <= now || entry.AbsoluteExpiresAt <= now)
                     cache.Evict(key);
             }
         }
@@ -83,15 +87,15 @@ namespace OpenSpace.Core
 
         private class CacheEntry
         {
-            public TKey Key { get; }
             public TValue Value { get; }
-            public DateTime ExpiresAt { get; set; }
+            public DateTime AbsoluteExpiresAt { get; }
+            public DateTime SlidingExpiresAt { get; set; }
 
-            public CacheEntry(TKey key, TValue value, DateTime expiresAt)
+            public CacheEntry(TValue value, DateTime absoluteExpiresAt, DateTime slidingExpiresAt)
             {
-                Key = key;
                 Value = value;
-                ExpiresAt = expiresAt;
+                AbsoluteExpiresAt = absoluteExpiresAt;
+                SlidingExpiresAt = slidingExpiresAt;
             }
         }
     }

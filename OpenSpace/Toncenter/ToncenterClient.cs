@@ -17,13 +17,22 @@ namespace OpenSpace.Toncenter
             _logger = logger;
         }
 
+        public async Task<GetMethodResult> RunGetMethodAsync(string address, string method, StackData[]? stack = null)
+        {
+            RunMethodBody body = new(address, method, stack);
+            string json = JsonConvert.SerializeObject(body);
+            string content = await ExecutePostRequestAsync("runGetMethod", json).ConfigureAwait(false);
+            GetMethodResult result = JsonConvert.DeserializeObject<GetMethodResult>(content);
+            return result;
+        }
+
         public async Task<JettonWallet?> GetJettonWalletAsync(string owner, string jettonMaster)
         {
             UrlQueryBuilder builder = new("jetton/wallets");
             builder.AddParameter("owner_address", owner);
             builder.AddParameter("jetton_address", jettonMaster);
             string content = await ExecuteGetRequestAsync(builder.Build()).ConfigureAwait(false);
-            JettonWallet? wallet = JsonConvert.DeserializeObject<JettonWallet[]>(content)?.SingleOrDefault() ?? null;
+            JettonWallet? wallet = JsonConvert.DeserializeObject<JettonWallets>(content).Wallets.SingleOrDefault();
             if (wallet != null)
                 _logger.LogDebug(LogEvents.Toncenter, "{Address} wallet found. Owner {Owner}", wallet.Value.Address, owner);
             else
@@ -46,11 +55,26 @@ namespace OpenSpace.Toncenter
             return items;
         }
 
-        private async Task<string> ExecuteGetRequestAsync(string url)
+        private Task<string> ExecuteGetRequestAsync(string url)
+        {
+            HttpRequestMessage message = new(HttpMethod.Get, url);
+            return ExecuteRequestAsync(message);
+        }
+
+        private Task<string> ExecutePostRequestAsync(string url, string json)
+        {
+            HttpRequestMessage message = new(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, null, "application/json")
+            };
+            return ExecuteRequestAsync(message);
+        }
+
+        private async Task<string> ExecuteRequestAsync(HttpRequestMessage message)
         {
             try
             {
-                HttpResponseMessage response = await _client.GetAsync(url).ConfigureAwait(false);
+                HttpResponseMessage response = await _client.SendAsync(message);
                 string content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
                 _logger.LogTrace(LogEvents.RestRecv, "{Content}", content);
                 HttpStatusCode statusCode = response.StatusCode;
@@ -60,12 +84,12 @@ namespace OpenSpace.Toncenter
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} failed", $"{_client.BaseAddress}{url}");
+                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} failed", $"{_client.BaseAddress}{message.RequestUri}");
                 throw;
             }
             catch (TaskCanceledException ex)
             {
-                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} timed out", $"{_client.BaseAddress}{url}");
+                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} timed out", $"{_client.BaseAddress}{message.RequestUri}");
                 throw;
             }
         }

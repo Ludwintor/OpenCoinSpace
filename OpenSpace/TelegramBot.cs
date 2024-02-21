@@ -98,7 +98,7 @@ namespace OpenSpace
             string? data = query.Data;
             if (string.IsNullOrEmpty(data))
                 return Task.CompletedTask;
-            _logger.LogDebug(LogEvents.Bot, "User {User} use callback query {Data}", query.From.Username ?? query.From.Id.ToString(), data);
+            _logger.LogDebug(LogEvents.Bot, "User {User} used callback query \"{Data}\"", query.From.Username ?? query.From.Id.ToString(), data);
             ReadOnlySpan<char> span = data.AsSpan();
             int delim = span.IndexOf(QUERY_DELIMETER);
             string id = delim >= 0 ? span[..delim].ToString() : data;

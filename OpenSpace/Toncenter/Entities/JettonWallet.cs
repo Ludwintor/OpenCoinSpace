@@ -2,6 +2,13 @@
 
 namespace OpenSpace.Toncenter.Entities
 {
+    // cuz toncenter doesn't directly return json array but object that contains array
+    internal struct JettonWallets
+    {
+        [JsonProperty("jetton_wallets")]
+        public JettonWallet[] Wallets { get; private set; }
+    }
+
     internal struct JettonWallet
     {
         [JsonProperty("address")]
