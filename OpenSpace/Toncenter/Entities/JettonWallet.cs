@@ -6,7 +6,7 @@ namespace OpenSpace.Toncenter.Entities
     internal struct JettonWallets
     {
         [JsonProperty("jetton_wallets")]
-        public JettonWallet[] Wallets { get; private set; }
+        public JettonWallet[]? Wallets { get; private set; }
     }
 
     internal struct JettonWallet

@@ -1,0 +1,14 @@
+version: '3.4'
+
+services:
+  openspace:
+    image: ${DOCKER_REGISTRY-}openspace
+    build:
+      context: .
+      dockerfile: OpenSpace/Dockerfile
+    depends_on:
+        - redis
+    environment:
+        OPENSPACE_CONFIG: "dev.config.json"
+  redis:
+    image: redis

@@ -6,9 +6,9 @@ namespace OpenSpace.Services
 {
     internal interface ITonService
     {
-        Task<StakingInfo> GetStakingInfoAsync(string address);
+        ValueTask<JettonWallet?> GetJettonWalletAsync(string owner, string masterAddress);
 
-        Task<JettonWallet?> GetJettonWalletAsync(string owner, string masterAddress);
+        ValueTask<NftItem[]> GetNftItemsAsync(string collection, string owner);
 
         TonConnect GetUserConnector(long userId);
     }

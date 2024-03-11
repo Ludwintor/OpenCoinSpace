@@ -9,8 +9,9 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
-namespace OpenSpace
+namespace OpenSpace.Bot
 {
+
     public sealed class TelegramBot
     {
         private const char QUERY_DELIMETER = ':';
@@ -18,12 +19,14 @@ namespace OpenSpace
         private readonly TelegramBotClient _client;
         private readonly IServiceProvider _provider;
         private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<(long, long), TaskCompletionSource<Message>> _inputWaiter = [];
+        private readonly TimeSpan _defaultWaiterTimeout;
+        private readonly ConcurrentDictionary<(long, long), InputRequest> _inputWaiter = [];
 
-        public TelegramBot(string token, IServiceProvider provider)
+        public TelegramBot(string token, IServiceProvider provider, TimeSpan? inputWaiterTimeout = null)
         {
             _client = new(token);
             _provider = provider;
+            _defaultWaiterTimeout = inputWaiterTimeout ?? TimeSpan.FromMinutes(5);
             _logger = provider.GetRequiredService<ILogger>();
         }
 
@@ -36,11 +39,12 @@ namespace OpenSpace
             await _client.ReceiveAsync(UpdateHandler, ErrorHandler, options).ConfigureAwait(false);
         }
 
-        public Task<Message> WaitInputAsync(long userId, long chatId)
+        public Task<Message?> WaitInputAsync(long userId, long chatId, TimeSpan? timeout = null)
         {
-            TaskCompletionSource<Message> tcs = new();
-            _inputWaiter.AddOrUpdate((userId, chatId), tcs, (key, value) => value);
-            return tcs.Task;
+            // TODO: add cancelation after timeout to avoid infinite awaiting
+            InputRequest request = new(timeout ?? _defaultWaiterTimeout);
+            _inputWaiter.AddOrUpdate((userId, chatId), request, (key, value) => value);
+            return request.Task;
         }
 
         private Task UpdateHandler(ITelegramBotClient client, Update update, CancellationToken ct)
@@ -49,18 +53,17 @@ namespace OpenSpace
             {
                 try
                 {
-                    return update.Type switch
+                    (update.Type switch
                     {
                         UpdateType.Message => HandleMessage(client, update.Message!, ct),
                         UpdateType.CallbackQuery => HandleCallbackQuery(client, update.CallbackQuery!, ct),
                         UpdateType.InlineQuery => HandleInlineQuery(client, update.InlineQuery!, ct),
                         _ => Task.CompletedTask,
-                    };
+                    }).Wait();
                 }
                 catch (Exception e)
                 {
                     _logger.LogError(LogEvents.Bot, e, "Handling {Type} Update errored", update.Type.ToString());
-                    return Task.CompletedTask;
                 }
             }, ct);
             return Task.CompletedTask;
@@ -76,13 +79,14 @@ namespace OpenSpace
         {
             if (string.IsNullOrEmpty(message.Text))
                 return Task.CompletedTask;
-            ResolveWaiters(message);
+            if (message.From != null)
+                ResolveWaiter(message.From.Id, message.Chat.Id, message);
             if (message.Text[0] == '/')
                 return HandleCommand(client, message, ct);
             return Task.CompletedTask;
         }
 
-        private Task HandleCommand(ITelegramBotClient client, Message message, CancellationToken ct)
+        private Task HandleCommand(ITelegramBotClient _, Message message, CancellationToken ct)
         {
             string[] args = message.Text!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (args.Length == 0)
@@ -93,11 +97,13 @@ namespace OpenSpace
             return resolver.ResolveCommandAsync(this, message, ct);
         }
 
-        private Task HandleCallbackQuery(ITelegramBotClient client, CallbackQuery query, CancellationToken ct)
+        private Task HandleCallbackQuery(ITelegramBotClient _, CallbackQuery query, CancellationToken ct)
         {
             string? data = query.Data;
             if (string.IsNullOrEmpty(data))
                 return Task.CompletedTask;
+            if (query.Message != null)
+                ResolveWaiter(query.From.Id, query.Message.Chat.Id, null);
             _logger.LogDebug(LogEvents.Bot, "User {User} used callback query \"{Data}\"", query.From.Username ?? query.From.Id.ToString(), data);
             ReadOnlySpan<char> span = data.AsSpan();
             int delim = span.IndexOf(QUERY_DELIMETER);
@@ -109,7 +115,7 @@ namespace OpenSpace
             return resolver.ResolveCallbackAsync(this, query, id, arg, ct);
         }
 
-        private Task HandleInlineQuery(ITelegramBotClient client, InlineQuery query, CancellationToken ct)
+        private Task HandleInlineQuery(ITelegramBotClient _, InlineQuery query, CancellationToken ct)
         {
             IInlineResolver? resolver = _provider.GetService<IInlineResolver>();
             if (resolver == null)
@@ -117,10 +123,13 @@ namespace OpenSpace
             return resolver.ResolveInlineAsync(this, query, ct);
         }
 
-        private void ResolveWaiters(Message message)
+        private void ResolveWaiter(long userId, long chatId, Message? message)
         {
-            if (message.From != null && _inputWaiter.TryRemove((message.From.Id, message.Chat.Id), out TaskCompletionSource<Message>? tcs))
-                tcs.SetResult(message);
+            if (_inputWaiter.TryRemove((userId, chatId), out InputRequest? request))
+            {
+                request.SetMessage(message);
+                request.Dispose();
+            }
         }
     }
 }

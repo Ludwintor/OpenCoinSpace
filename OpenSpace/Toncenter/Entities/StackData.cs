@@ -8,6 +8,6 @@ namespace OpenSpace.Toncenter.Entities
         public string Type { get; private set; }
 
         [JsonProperty("value")]
-        public object? Value { get; private set; }
+        public string Value { get; private set; }
     }
 }

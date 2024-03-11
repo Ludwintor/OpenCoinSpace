@@ -1,37 +1,38 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Globalization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using OpenSpace.Bot;
 using OpenSpace.Core;
 using OpenSpace.Logging;
 using OpenSpace.Repositories;
 using OpenSpace.Resolvers;
 using OpenSpace.Services;
 using OpenSpace.Toncenter;
-using Telegram.Bot.Polling;
-using Telegram.Bot.Types.Enums;
 using Polly;
 using Polly.Extensions.Http;
-using Polly.Retry;
-using System.Globalization;
+using Telegram.Bot.Polling;
+using Telegram.Bot.Types.Enums;
 
 namespace OpenSpace
 {
     internal static class Program
     {
+        private const string CONFIG_ENV = "OPENSPACE_CONFIG";
         private const string DEFAULT_CONFIG = "config.json";
 
         private static IServiceProvider _serviceProvider = null!;
 
         private static async Task Main(string[] args)
         {
-            CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             Config config = ReadConfig(args);
             IServiceCollection services = new ServiceCollection();
             services.AddSingleton(config); // TODO: Probably options pattern?
-            services.AddSingleton<ILogger, ConsoleLogger>(provider => new ConsoleLogger(LogLevel.Trace));
-            services.AddSingleton<ITonConnectRepository, TonConnectRepository>();
+            services.AddSingleton<ILogger, ConsoleLogger>(provider => new ConsoleLogger(LogLevel.Debug));
+            services.AddSingleton<ITonConnectRepository, RedisTonConnectRepository>();
             services.AddSingleton<ITonService, TonService>();
+            services.AddSingleton<IStakingService, StakingService>();
             services.AddHttpClient<ToncenterClient>(client =>
             {
                 client.BaseAddress = new(config.ToncenterUrl);
@@ -62,11 +63,14 @@ namespace OpenSpace
             collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.STAKING);
             collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.STAKE);
             collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.UNSTAKE);
+            collection.AddKeyedSingleton<ICallbackResolver, StakingResolver>(Callbacks.DONATE);
+            collection.AddKeyedSingleton<ICallbackResolver, MiscResolver>(Callbacks.SETTINGS);
+            collection.AddKeyedSingleton<ICallbackResolver, MiscResolver>(Callbacks.INFO);
         }
 
         private static Config ReadConfig(string[] args)
         {
-            string path = DEFAULT_CONFIG;
+            string path = Environment.GetEnvironmentVariable(CONFIG_ENV) ?? DEFAULT_CONFIG;
             if (args.Length > 0)
                 path = args[0];
             string json = File.ReadAllText(path);
@@ -75,41 +79,19 @@ namespace OpenSpace
 
         private static IAsyncPolicy<HttpResponseMessage> GetRetryPolicy(IServiceProvider provider, HttpRequestMessage request)
         {
+            const int MAX_RETRY = 5;
             return HttpPolicyExtensions.HandleTransientHttpError()
                                        .OrResult(msg => msg.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
-                                       .WaitAndRetryAsync(5, _ => TimeSpan.FromSeconds(1),
-                                        (output, delay, attempt) =>
+                                       .WaitAndRetryAsync(MAX_RETRY, _ => TimeSpan.FromSeconds(1),
+                                        (output, delay, attempt, _) =>
                                         {
                                             ILogger logger = provider.GetRequiredService<ILogger>();
                                             if (output.Result != null && output.Result.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                                                 logger.LogWarning(LogEvents.RateLimit, "Ratelimit hit. Retrying in {Delay} secs. {Attempt}/5", delay.Seconds, attempt);
                                             else
-                                                logger.LogError(LogEvents.RestError, "Rest error. Retrying in {Delay} secs. {Attempt}/5", delay.Seconds, attempt);
+                                                logger.LogError(LogEvents.RestError, output.Exception, "Rest error: {Code}. Retrying in {Delay} secs. {Attempt}/5", 
+                                                    output.Result?.StatusCode.ToString() ?? "null", delay.Seconds, attempt);
                                         });
         }
-    }
-
-    internal sealed class Config
-    {
-        [JsonProperty("botApi", Required = Required.Always)]
-        public string BotApi { get; private set; } = null!;
-
-        [JsonProperty("toncenterUrl", Required = Required.Always)]
-        public string ToncenterUrl { get; private set; } = null!;
-
-        [JsonProperty("toncenterApi", Required = Required.Always)]
-        public string ToncenterApi { get; private set; } = null!;
-
-        [JsonProperty("tonConnectManifestUrl", Required = Required.Always)]
-        public string TonConnectManifestUrl { get; private set; } = null!;
-
-        [JsonProperty("stakingAddress", Required = Required.Always)]
-        public string StakingAddress { get; private set; } = null!;
-
-        [JsonProperty("tokenAddress", Required = Required.Always)]
-        public string TokenAddress { get; private set; } = null!;
-
-        [JsonProperty("tokenDecimals", Required = Required.Always)]
-        public int TokenDecimals { get; private set; }
     }
 }

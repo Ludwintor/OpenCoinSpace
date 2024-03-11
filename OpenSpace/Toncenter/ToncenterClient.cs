@@ -32,7 +32,7 @@ namespace OpenSpace.Toncenter
             builder.AddParameter("owner_address", owner);
             builder.AddParameter("jetton_address", jettonMaster);
             string content = await ExecuteGetRequestAsync(builder.Build()).ConfigureAwait(false);
-            JettonWallet? wallet = JsonConvert.DeserializeObject<JettonWallets>(content).Wallets.SingleOrDefault();
+            JettonWallet? wallet = JsonConvert.DeserializeObject<JettonWallets>(content).Wallets?.Cast<JettonWallet?>().FirstOrDefault() ?? null;
             if (wallet != null)
                 _logger.LogDebug(LogEvents.Toncenter, "{Address} wallet found. Owner {Owner}", wallet.Value.Address, owner);
             else
@@ -50,7 +50,7 @@ namespace OpenSpace.Toncenter
             if (offset != null)
                 builder.AddParameter("offset", offset.Value.ToString());
             string content = await ExecuteGetRequestAsync(builder.Build()).ConfigureAwait(false);
-            NftItem[] items = JsonConvert.DeserializeObject<NftItem[]>(content) ?? [];
+            NftItem[] items = JsonConvert.DeserializeObject<NftItems>(content).Items ?? [];
             _logger.LogDebug(LogEvents.Toncenter, "{Length} nft items found", items.Length.ToString());
             return items;
         }
@@ -65,7 +65,7 @@ namespace OpenSpace.Toncenter
         {
             HttpRequestMessage message = new(HttpMethod.Post, url)
             {
-                Content = new StringContent(json, null, "application/json")
+                Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json")
             };
             return ExecuteRequestAsync(message);
         }
@@ -84,12 +84,12 @@ namespace OpenSpace.Toncenter
             }
             catch (HttpRequestException ex)
             {
-                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} failed", $"{_client.BaseAddress}{message.RequestUri}");
+                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} failed with status code: {Code}", message.RequestUri, ex.StatusCode);
                 throw;
             }
             catch (TaskCanceledException ex)
             {
-                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} timed out", $"{_client.BaseAddress}{message.RequestUri}");
+                _logger.LogError(LogEvents.RestError, ex, "Request to {Url} timed out", message.RequestUri);
                 throw;
             }
         }

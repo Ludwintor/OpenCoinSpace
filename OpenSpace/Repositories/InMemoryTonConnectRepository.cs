@@ -2,11 +2,11 @@
 
 namespace OpenSpace.Repositories
 {
-    internal sealed class TonConnectRepository : ITonConnectRepository
+    internal sealed class InMemoryTonConnectRepository : ITonConnectRepository
     {
         private readonly ConcurrentDictionary<string, string?> _dictionary;
 
-        public TonConnectRepository()
+        public InMemoryTonConnectRepository()
         {
             _dictionary = new();
         }

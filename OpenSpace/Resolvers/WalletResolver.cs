@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using OpenSpace.Bot;
 using OpenSpace.Core;
 using OpenSpace.Logging;
 using OpenSpace.Services;
@@ -10,14 +11,15 @@ using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using TonSdk.Connect;
-using TonSdk.Core;
 
 namespace OpenSpace.Resolvers
 {
     internal sealed class WalletResolver : ICallbackResolver
     {
-        private const string CONNECTED_WALLET_TEXT = """
-            Адрес: `{0}`
+        private const string CONNECTED_WALLET_TEXT = $$"""
+            {{Emojis.PURSE}} Кошелёк
+
+            `{0}`
 
             Баланс: {1} OPEN
             """;
@@ -28,11 +30,7 @@ namespace OpenSpace.Resolvers
             Выберите свой кошелёк для подключения
             """;
         private const string ONE_STEP_CONNECT_TEXT = """
-            Нажмите на кнопку ниже, чтобы подключить кошелёк (рекомендуется подключать с мобильного устройства)
-            """;
-        private const string CONNECTION_ERRORED_TEXT = """
-            Не удалось подключить кошелёк
-            Причина: {0}
+            Нажмите на кнопку ниже, чтобы подключить кошелёк
             """;
 
         private static readonly InlineKeyboardMarkup _noWalletMarkup = new([
@@ -104,7 +102,7 @@ namespace OpenSpace.Resolvers
                 unsubscribe();
             if (connector.IsConnected)
                 await connector.Disconnect().ConfigureAwait(false);
-            WalletConfig? config = connector.GetWallets(true, false).Where(x => x.AppName == arg).FirstOrDefault();
+            WalletConfig? config = connector.GetWallets(true, false).FirstOrDefault(x => x.AppName == arg);
             if (!config.HasValue)
             {
                 // TODO: something went wrong, there's no such wallet
@@ -137,14 +135,13 @@ namespace OpenSpace.Resolvers
 
         private void OnWalletConnected(TelegramBot bot, CallbackQuery query, Wallet wallet, CancellationToken ct)
         {
-            string address = wallet.Account.Address?.ToNonBounceable() ?? string.Empty;
+            string address = wallet.Account.Address!.ToNonBounceable();
             _logger.LogInformation(LogEvents.Bot, "User {User} connected wallet {Address}", query.From.Username ?? query.From.Id.ToString(), address);
             ShowWalletAsync(bot, query, address, ct).ConfigureAwait(false);
         }
 
         private void OnWalletErrored(CallbackQuery query, string error)
         {
-            string text = string.Format(CONNECTION_ERRORED_TEXT, error);
             _logger.LogWarning(LogEvents.Bot, "User {User} cannot connect wallet. Reason: {Error}", query.From.Username ?? query.From.Id.ToString(), error);
         }
     }

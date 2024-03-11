@@ -3,6 +3,9 @@
     "OpenSpace": {
       "commandName": "Project",
       "commandLineArgs": "dev.config.json"
+    },
+    "Docker": {
+      "commandName": "Docker"
     }
   }
 }

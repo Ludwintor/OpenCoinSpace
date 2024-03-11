@@ -2,6 +2,13 @@
 
 namespace OpenSpace.Toncenter.Entities
 {
+    // cuz toncenter doesn't directly return json array but object that contains array
+    internal struct NftItems
+    {
+        [JsonProperty("nft_items")]
+        public NftItem[]? Items { get; private set; }
+    }
+
     internal struct NftItem
     {
         [JsonProperty("address")]

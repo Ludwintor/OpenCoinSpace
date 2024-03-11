@@ -8,6 +8,7 @@
         public required UInt128 MinStake { get; init; }
         public required ulong MaxPercent { get; init; }
         public required ulong MinPercent { get; init; }
+        public required ulong MaxLockup { get; init; }
         public required ulong MinLockup { get; init; }
     }
 }

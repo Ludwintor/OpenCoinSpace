@@ -1,4 +1,5 @@
-﻿using Telegram.Bot.Types;
+﻿using OpenSpace.Bot;
+using Telegram.Bot.Types;
 
 namespace OpenSpace.Core
 {

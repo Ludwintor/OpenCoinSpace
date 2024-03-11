@@ -1,7 +1,5 @@
-﻿using System.Globalization;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using OpenSpace.Core;
-using OpenSpace.Entities;
 using OpenSpace.Logging;
 using OpenSpace.Repositories;
 using OpenSpace.Toncenter;
@@ -12,56 +10,57 @@ namespace OpenSpace.Services
 {
     internal sealed class TonService : ITonService
     {
-        private const string GET_STAKING_INFO = "get_staking_info";
-
         private readonly ILogger _logger;
         private readonly ToncenterClient _client;
         private readonly TonConnectOptions _connectorOptions;
         private readonly ITonConnectRepository _repository;
-        private readonly SimpleCache<long, TonConnect> _cache;
+        private readonly SimpleCache<long, TonConnect> _connectorCache;
+        private readonly SimpleCache<(string, string), NftItem[]> _nftsCache;
+        private readonly SimpleCache<(string, string), JettonWallet> _walletsCache;
 
         public TonService(ILogger logger, ToncenterClient client, ITonConnectRepository repository, Config config)
         {
             _logger = logger;
             _client = client;
             _repository = repository;
-            _cache = new(null, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10));
-            _cache.Evicted += RecycleConnector;
+            _connectorCache = new(null, TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(10));
+            _connectorCache.Evicted += RecycleConnector;
+            _nftsCache = new(TimeSpan.FromSeconds(5), null, TimeSpan.FromMinutes(10));
+            _walletsCache = new(TimeSpan.FromSeconds(5), null, TimeSpan.FromMinutes(10));
             _connectorOptions = new()
             {
-                ManifestUrl = config.TonConnectManifestUrl,
+                ManifestUrl = config.TonConnectManifestUrl
             };
         }
 
-        public async Task<StakingInfo> GetStakingInfoAsync(string address)
+        public async ValueTask<JettonWallet?> GetJettonWalletAsync(string owner, string masterAddress)
         {
-            GetMethodResult result = await _client.RunGetMethodAsync(address, GET_STAKING_INFO);
-            StackData[] stack = result.Stack;
-            // TODO: Stack reader!!!
-            return new()
-            {
-                RewardSupply = UInt128.Parse(StripHexPrefix((string)stack[0].Value!), NumberStyles.HexNumber),
-                Balance = UInt128.Parse(StripHexPrefix((string)stack[1].Value!), NumberStyles.HexNumber),
-                BaseRewardSupply = UInt128.Parse(StripHexPrefix((string)stack[2].Value!), NumberStyles.HexNumber),
-                MinStake = UInt128.Parse(StripHexPrefix((string)stack[3].Value!), NumberStyles.HexNumber),
-                MaxPercent = ulong.Parse(StripHexPrefix((string)stack[4].Value!), NumberStyles.HexNumber),
-                MinPercent = ulong.Parse(StripHexPrefix((string)stack[5].Value!), NumberStyles.HexNumber),
-                MinLockup = ulong.Parse(StripHexPrefix((string)stack[6].Value!), NumberStyles.HexNumber),
-            };
+            (string, string) key = (owner, masterAddress);
+            if (_walletsCache.TryGet(key, out JettonWallet cached))
+                return cached;
+            JettonWallet? wallet = await _client.GetJettonWalletAsync(owner, masterAddress);
+            if (wallet == null)
+                return null;
+            _walletsCache.AddOrUpdate(key, wallet.Value);
+            return wallet;
         }
 
-        public Task<JettonWallet?> GetJettonWalletAsync(string owner, string masterAddress)
+        public async ValueTask<NftItem[]> GetNftItemsAsync(string collection, string owner)
         {
-            // TODO: Add cache?
-            return _client.GetJettonWalletAsync(owner, masterAddress);
+            (string, string) key = (collection, owner);
+            if (_nftsCache.TryGet(key, out NftItem[]? items))
+                return items;
+            items = await _client.GetNftItemsAsync(collection, owner).ConfigureAwait(false);
+            _nftsCache.AddOrUpdate(key, items);
+            return items;
         }
 
         public TonConnect GetUserConnector(long userId)
         {
-            if (_cache.TryGet(userId, out TonConnect? connector))
+            if (_connectorCache.TryGet(userId, out TonConnect? connector))
                 return connector;
             connector = new(_connectorOptions, CreateStorage(userId));
-            _cache.AddOrUpdate(userId, connector);
+            _connectorCache.AddOrUpdate(userId, connector);
             return connector;
         }
 
@@ -81,15 +80,8 @@ namespace OpenSpace.Services
 
         private void RecycleConnector(long userId, TonConnect connector)
         {
-            _logger.LogInformation(LogEvents.TonConnect, "User {Id} connector paused", userId.ToString());
+            _logger.LogTrace(LogEvents.TonConnect, "User {Id} connector paused", userId.ToString());
             connector.PauseConnection();
-        }
-
-        private static ReadOnlySpan<char> StripHexPrefix(ReadOnlySpan<char> prefixedHex)
-        {
-            if (prefixedHex.StartsWith("0x"))
-                return prefixedHex[2..];
-            return prefixedHex;
         }
     }
 }

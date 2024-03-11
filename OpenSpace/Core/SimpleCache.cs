@@ -9,11 +9,11 @@ namespace OpenSpace.Core
 
         private readonly ConcurrentDictionary<TKey, CacheEntry> _cache;
         private readonly TimeSpan? _absoluteExpiration;
-        private readonly TimeSpan _slidingExpiration;
+        private readonly TimeSpan? _slidingExpiration;
         private readonly TimeSpan _expirationScanFrequency;
         private DateTime _lastExpirationScan;
 
-        public SimpleCache(TimeSpan? absoluteExpiration, TimeSpan slidingExpiration, TimeSpan expirationScanFrequency)
+        public SimpleCache(TimeSpan? absoluteExpiration, TimeSpan? slidingExpiration, TimeSpan expirationScanFrequency)
         {
             _absoluteExpiration = absoluteExpiration;
             _slidingExpiration = slidingExpiration;
@@ -33,7 +33,8 @@ namespace OpenSpace.Core
                 Evict(key);
                 return false;
             }
-            entry.SlidingExpiresAt = now + _slidingExpiration;
+            if (_slidingExpiration.HasValue)
+                entry.SlidingExpiresAt = now + _slidingExpiration.Value;
             value = entry.Value;
             return true;
         }
@@ -42,7 +43,7 @@ namespace OpenSpace.Core
         {
             DateTime now = DateTime.UtcNow;
             DateTime absoluteExpiration = _absoluteExpiration.HasValue ? now + _absoluteExpiration.Value : DateTime.MaxValue;
-            DateTime slidingExpiration = now + _slidingExpiration;
+            DateTime slidingExpiration = _slidingExpiration.HasValue ? now + _slidingExpiration.Value : DateTime.MaxValue;
             CacheEntry entry = new(value, absoluteExpiration, slidingExpiration);
             _cache.AddOrUpdate(key, entry, (_, _) => entry);
             StartScanForExpiredItems();

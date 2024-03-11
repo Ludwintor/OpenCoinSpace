@@ -1,4 +1,5 @@
-﻿using OpenSpace.Core;
+﻿using OpenSpace.Bot;
+using OpenSpace.Core;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
